@@ -1,28 +1,28 @@
 services:
 
-  mongo_gomoku:
+  mongo_GomokuGame:
     networks:
-      - mynetwork_gomoku
+      - mynetwork_GomokuGame
     image: mongo:4.4.18
-    container_name: mongo_gomoku
+    container_name: mongo_GomokuGame
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: mongodb
       MONGO_INITDB_ROOT_PASSWORD: mijn_geheime_mongodb_wachtwoord
     ports:
-      - "27018:27017"
+      - "27019:27017"
     volumes:
       - ./mongodata:/data/db
 
-  gomoku:
-    container_name: gomoku
+  GomokuGame:
+    container_name: GomokuGame
     networks:
-      - mynetwork_gomoku
-    build: ./gomoku
+      - mynetwork_GomokuGame
+    build: ./GomokuGame
     ports:
-      - "5001:5000"
+      - "5002:5000"
     volumes:
-      - ./gomoku:/app  # Dankzij deze regel, en de volgende regel in je flask-app
+      - ./GomokuGame:/app  # Dankzij deze regel, en de volgende regel in je flask-app
                 # kun je je python code on the fly aanpassen, en wordt het
                 # na wijziging automatisch gereload.
                 # Je hoeft dan dus alleen nog het image te rebuilden als 
@@ -32,10 +32,10 @@ services:
                 # Maar soms is restarten nodig:
                 # docker-compose restart gomoku
     environment:
-      - APP_SECRET_KEY=mijn_geheime_gomoku_applicatie_sleutel
+      - APP_SECRET_KEY=mijn_geheime_GomokuGame_applicatie_sleutel
       - MONGO_INITDB_ROOT_USERNAME=mongodb
       - MONGO_INITDB_ROOT_PASSWORD=mijn_geheime_mongodb_wachtwoord
-      - MONGO_HOST=mongo_gomoku  # Docker-service naam van MongoDB (gebruikt in de Flask-app voor verbinding)
+      - MONGO_HOST=mongo_GomokuGame  # Docker-service naam van MongoDB (gebruikt in de Flask-app voor verbinding)
       - FLASK_ENV=development # debug modus: daardoor rebuild de container automatisch na een wijziging.
                              # NB: gebruik in dit geval in de Dockerfile: CMD ["python", "app.py"]
       #- FLASK_ENV=production # production modus: dat geeft beter gedrag bij meer bezoekers.
@@ -43,4 +43,4 @@ services:
     restart: unless-stopped
                 
 networks:
-  mynetwork_gomoku:
+  mynetwork_GomokuGame:
