@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gomoku Statistieken</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/github-markdown.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .filter {
+            margin-bottom: 20px;
+        }
+        .filter select, .filter input {
+            margin-right: 10px;
+        }
+        .results {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .results th, .results td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        .results th {
+            background-color: #f2f2f2;
+        }
+        .navigation {
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+        }
+        .navigation button {
+            margin-right: 10px;
+        }        
+        .navigation button:disabled {
+            background-color: #ccc;
+        }
+        .human-player {
+            color: green;
+        }
+    </style>
+</head>
+<!--<body>-->
+<body class="markdown-body" data-theme="dark">
+    <div class="container">
+        <h1>Gomoku Statistieken</h1>
+        <form class="filter" id="filterForm">
+            <div>
+                <label for="blackPlayer">Zwart:</label>
+                <select id="blackPlayer" name="blackPlayer">
+                    <option value="All">Alle</option>
+                    <option value="Human">Human</option>
+                    <option value="AI Random">AI Random</option>
+                    <option value="AI Marius TNG">AI Marius TNG</option>
+                </select>
+                <input type="text" id="blackPlayerName" name="blackPlayerName" placeholder="Naam" style="display: none;">
+            </div>
+            <div>
+                <label for="filterType">Filter Type:</label>
+                <select id="filterType" name="filterType">
+                    <option value="AND">EN</option>
+                    <option value="OR">OF</option>
+                </select>
+            </div>
+            <div>
+                <label for="whitePlayer">Wit:</label>
+                <select id="whitePlayer" name="whitePlayer">
+                    <option value="All">Alle</option>
+                    <option value="Human">Human</option>
+                    <option value="AI Random">AI Random</option>
+                    <option value="AI Marius TNG">AI Marius TNG</option>
+                </select>
+                <input type="text" id="whitePlayerName" name="whitePlayerName" placeholder="Naam" style="display: none;">
+            </div>
+            <button type="submit">Toon resultaten</button>
+        </form>
+        <table class="results" id="resultsTable">
+            <thead>
+                <tr>
+                    <th>Zwart</th>
+                    <th>Wit</th>
+                    <th>Winnaar</th>
+                    <th>Zetten</th>
+                    <th>Datum</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Resultaten worden hier toegevoegd -->
+            </tbody>
+        </table>
+        <div class="navigation">
+            <button id="homeButton">Home</button>
+            <button id="prevButton" disabled>Vorige 10</button>
+            <button id="nextButton" disabled>Volgende 10</button>
+        </div> 
+        <div class="separator"></div>
+        <button id="nieuwSpel" onclick="window.location.href='/gomoku/start'">Nieuw Spel</button>   
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const filterForm = document.getElementById('filterForm');
+            const blackPlayer = document.getElementById('blackPlayer');
+            const whitePlayer = document.getElementById('whitePlayer');
+            const blackPlayerName = document.getElementById('blackPlayerName');
+            const whitePlayerName = document.getElementById('whitePlayerName');
+
+            blackPlayer.addEventListener('change', function() {
+                blackPlayerName.style.display = this.value === 'Human' ? 'inline' : 'none';
+            });
+
+            whitePlayer.addEventListener('change', function() {
+                whitePlayerName.style.display = this.value === 'Human' ? 'inline' : 'none';
+            });
+
+            filterForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetchResults(0);
+            });
+
+            const homeButton = document.getElementById('homeButton');
+            const prevButton = document.getElementById('prevButton');
+            const nextButton = document.getElementById('nextButton');
+            let currentPage = 0;
+
+            homeButton.addEventListener('click', function() {
+                currentPage = 0;
+                fetchResults(currentPage);
+            });
+
+            prevButton.addEventListener('click', function() {
+                if (currentPage > 0) {
+                    currentPage -= 1;
+                    fetchResults(currentPage);
+                }
+            });
+
+            nextButton.addEventListener('click', function() {
+                currentPage += 1;
+                fetchResults(currentPage);
+            });
+
+            function fetchResults(page) {
+                const formData = new FormData(filterForm);
+                const queryParams = new URLSearchParams(formData);
+                queryParams.append('page', page);
+
+                fetch(`/gomoku/results?${queryParams.toString()}`)
+                    .then(response => {
+                        console.log("Response status:", response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("Received data:", data);
+                        const resultsTable = document.getElementById('resultsTable').getElementsByTagName('tbody')[0];
+                        resultsTable.innerHTML = '';
+                        if (data.results && data.results.length > 0) {
+                            data.results.forEach(result => {
+                                const row = resultsTable.insertRow();
+                                row.insertCell(0).innerHTML = formatPlayerName(result.nameBlack, result.engineBlack);
+                                row.insertCell(1).innerHTML = formatPlayerName(result.nameWhite, result.engineWhite);
+                                row.insertCell(2).textContent = result.winner;
+                                row.insertCell(3).textContent = result.plies;
+                                row.insertCell(4).textContent = new Date(result.insertedAt).toLocaleString();
+                            });
+                        }
+
+                        prevButton.disabled = !data.hasPrev;
+                        nextButton.disabled = !data.hasNext;
+                        homeButton.disabled = !data.hasPrev;
+                    })
+                    .catch(error => {
+                        console.error('Error fetching results:', error);
+                    });
+            }
+
+            function formatPlayerName(name, engine) {
+                return engine === 'human' ? `<span class="human-player">${name}</span>` : name;
+            }
+
+            // Initial load
+            fetchResults(currentPage);
+        });
+    </script>
+</body>
+</html>

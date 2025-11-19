@@ -1,0 +1,46 @@
+services:
+
+  mongo_gomoku:
+    networks:
+      - mynetwork_gomoku
+    image: mongo:4.4.18
+    container_name: mongo_gomoku
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongodb
+      MONGO_INITDB_ROOT_PASSWORD: mijn_geheime_mongodb_wachtwoord
+    ports:
+      - "27018:27017"
+    volumes:
+      - ./mongodata:/data/db
+
+  gomoku:
+    container_name: gomoku
+    networks:
+      - mynetwork_gomoku
+    build: ./gomoku
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./gomoku:/app  # Dankzij deze regel, en de volgende regel in je flask-app
+                # kun je je python code on the fly aanpassen, en wordt het
+                # na wijziging automatisch gereload.
+                # Je hoeft dan dus alleen nog het image te rebuilden als 
+                # requirements.txt verandert.
+                # Binnen de docker container wordt dan een app volume gemaakt
+                # waar alles in wordt gezet.
+                # Maar soms is restarten nodig:
+                # docker-compose restart gomoku
+    environment:
+      - APP_SECRET_KEY=mijn_geheime_gomoku_applicatie_sleutel
+      - MONGO_INITDB_ROOT_USERNAME=mongodb
+      - MONGO_INITDB_ROOT_PASSWORD=mijn_geheime_mongodb_wachtwoord
+      - MONGO_HOST=mongo_gomoku  # Docker-service naam van MongoDB (gebruikt in de Flask-app voor verbinding)
+      - FLASK_ENV=development # debug modus: daardoor rebuild de container automatisch na een wijziging.
+                             # NB: gebruik in dit geval in de Dockerfile: CMD ["python", "app.py"]
+      #- FLASK_ENV=production # production modus: dat geeft beter gedrag bij meer bezoekers.
+                             # NB: gebruik in dit geval in de Dockerfile: CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5001", "app:app"]
+    restart: unless-stopped
+                
+networks:
+  mynetwork_gomoku:

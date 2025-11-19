@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gomoku Spel</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/github-markdown.css') }}">
+    <style>
+        .player-row {
+            margin-bottom: 10px;
+        }
+        .separator {
+            margin: 20px 0;
+            border-top: 1px solid #ccc;
+        }
+        #uitlegText {
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+    <script>
+        class SpelInstellingen {
+            constructor() {
+                this.typeSpeler1 = localStorage.getItem('typeSpeler1') || 'Human';
+                this.naamSpeler1 = localStorage.getItem('naamSpeler1') || 'Anoniem';
+                this.typeSpeler2 = localStorage.getItem('typeSpeler2') || 'AI Marius TNG';
+                this.naamSpeler2 = localStorage.getItem('naamSpeler2') || 'AI Marius TNG';
+            }
+
+            getPlayerName(type, nameInput) {
+                return type === 'Human' ? nameInput : type;
+            }
+
+            isAlphanumeric(str) {
+                return /^[a-zA-Z0-9]+$/.test(str);
+            }
+
+            saveToLocalStorage() {
+                localStorage.setItem('typeSpeler1', this.typeSpeler1);
+                localStorage.setItem('naamSpeler1', this.naamSpeler1);
+                localStorage.setItem('typeSpeler2', this.typeSpeler2);
+                localStorage.setItem('naamSpeler2', this.naamSpeler2);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            const spelInstellingen = new SpelInstellingen();
+
+            // Speler 1 instellingen
+            const speler1Select = document.getElementById('speler1Select');
+            const speler1NaamInput = document.getElementById('speler1Naam');
+            speler1Select.value = spelInstellingen.typeSpeler1;
+            speler1NaamInput.value = spelInstellingen.typeSpeler1 === 'Human' ? spelInstellingen.naamSpeler1 : '';
+
+            // Speler 2 instellingen
+            const speler2Select = document.getElementById('speler2Select');
+            const speler2NaamInput = document.getElementById('speler2Naam');
+            speler2Select.value = spelInstellingen.typeSpeler2;
+            speler2NaamInput.value = spelInstellingen.typeSpeler2 === 'Human' ? spelInstellingen.naamSpeler2 : '';
+
+            // Toon of verberg naam invoerveld op basis van speler type
+            function updateNameFieldVisibility() {
+                speler1NaamInput.style.display = speler1Select.value === 'Human' ? 'inline-block' : 'none';
+                speler2NaamInput.style.display = speler2Select.value === 'Human' ? 'inline-block' : 'none';
+            }
+
+            updateNameFieldVisibility();
+
+            // Event listeners voor dropdowns en invoervelden
+            speler1Select.addEventListener('change', function() {
+                updateNameFieldVisibility();
+                spelInstellingen.typeSpeler1 = this.value;
+                spelInstellingen.naamSpeler1 = spelInstellingen.getPlayerName(this.value, speler1NaamInput.value);
+                spelInstellingen.saveToLocalStorage();
+            });
+
+            speler2Select.addEventListener('change', function() {
+                updateNameFieldVisibility();
+                spelInstellingen.typeSpeler2 = this.value;
+                spelInstellingen.naamSpeler2 = spelInstellingen.getPlayerName(this.value, speler2NaamInput.value);
+                spelInstellingen.saveToLocalStorage();
+            });
+
+            speler1NaamInput.addEventListener('input', function() {
+                if (spelInstellingen.isAlphanumeric(this.value) || this.value === '') {
+                    spelInstellingen.naamSpeler1 = this.value;
+                    spelInstellingen.saveToLocalStorage();
+                } else {
+                    alert('Gebruik alleen alfanumerieke karakters (letters en cijfers).');
+                    this.value = this.value.slice(0, -1);
+                }
+            });
+
+            speler2NaamInput.addEventListener('input', function() {
+                if (spelInstellingen.isAlphanumeric(this.value) || this.value === '') {
+                    spelInstellingen.naamSpeler2 = this.value;
+                    spelInstellingen.saveToLocalStorage();
+                } else {
+                    alert('Gebruik alleen alfanumerieke karakters (letters en cijfers).');
+                    this.value = this.value.slice(0, -1);
+                }
+            });
+
+            // Start het spel bij het klikken op de startknop
+            document.getElementById('startButton').addEventListener('click', function() {
+                if ((spelInstellingen.typeSpeler1 === 'Human' && spelInstellingen.naamSpeler1.length < 3) || 
+                    (spelInstellingen.typeSpeler2 === 'Human' && spelInstellingen.naamSpeler2.length < 3)) {
+                    alert('Spelernamen moeten minstens 3 karakters bevatten.');
+                    return;
+                }
+
+                // Create a form and submit it
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/gomoku/play';
+
+                const typeSpeler1Input = document.createElement('input');
+                typeSpeler1Input.type = 'hidden';
+                typeSpeler1Input.name = 'typeSpeler1';
+                typeSpeler1Input.value = spelInstellingen.typeSpeler1;
+                form.appendChild(typeSpeler1Input);
+
+                const naamSpeler1Input = document.createElement('input');
+                naamSpeler1Input.type = 'hidden';
+                naamSpeler1Input.name = 'naamSpeler1';
+                naamSpeler1Input.value = spelInstellingen.getPlayerName(spelInstellingen.typeSpeler1, speler1NaamInput.value);
+                form.appendChild(naamSpeler1Input);
+
+                const typeSpeler2Input = document.createElement('input');
+                typeSpeler2Input.type = 'hidden';
+                typeSpeler2Input.name = 'typeSpeler2';
+                typeSpeler2Input.value = spelInstellingen.typeSpeler2;
+                form.appendChild(typeSpeler2Input);
+
+                const naamSpeler2Input = document.createElement('input');
+                naamSpeler2Input.type = 'hidden';
+                naamSpeler2Input.name = 'naamSpeler2';
+                naamSpeler2Input.value = spelInstellingen.getPlayerName(spelInstellingen.typeSpeler2, speler2NaamInput.value);
+                form.appendChild(naamSpeler2Input);
+
+                document.body.appendChild(form);
+                form.submit();
+            });
+
+            // Event listener voor de uitlegknop
+            document.getElementById('uitlegButton').addEventListener('click', function() {
+                const uitlegText = document.getElementById('uitlegText');
+                uitlegText.style.display = uitlegText.style.display === 'none' ? 'block' : 'none';
+            });
+        });
+    </script>
+</head>
+<body class="markdown-body" data-theme="dark">
+    <h1>Gomoku Spel</h1>
+    
+    <div class="player-row">
+        <label for="speler1Select">Speler 1:</label>
+        <select id="speler1Select">
+            <option value="Human">Human</option>
+            <option value="AI Random">AI Random</option>
+            <option value="AI Marius TNG">AI Marius TNG</option>
+        </select>
+        <input type="text" id="speler1Naam" placeholder="Naam">
+    </div>
+
+    <div class="player-row">
+        <label for="speler2Select">Speler 2:</label>
+        <select id="speler2Select">
+            <option value="Human">Human</option>
+            <option value="AI Random">AI Random</option>
+            <option value="AI Marius TNG">AI Marius TNG</option>
+        </select>
+        <input type="text" id="speler2Naam" placeholder="Naam">
+    </div>
+
+    <button id="startButton">Start Game</button>
+
+    <div class="separator"></div>
+
+    <button id="statistiekenButton" onclick="window.location.href='/gomoku/statistics'">Statistieken</button>
+    <button id="uitlegButton">Uitleg</button>
+    <div id="uitlegText">De eerste die bij dit spel 5 stenen van eigen kleur op een lijn legt, die wint. Zwart begint.</div>
+</body>
+</html>

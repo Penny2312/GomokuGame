@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico" type="image/x-icon">
+<title>Stone in a Grid</title>
+
+<style>
+  :root {
+    --tile-size: 36px;
+    --padding: 5px;
+    --background-color: #d3d3d3;
+    --grid-background-color: #f0f0f0;
+    --stone-top: -1px;
+    --stone-left: -1px;
+    --stone-size: 36px;
+  }
+
+  body, html {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .board-and-win-image{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column; /* om te zorgen dat het win-image onderaan wordt toegevoegd onder de grid-container */
+  }
+
+  .background-rect {
+    width: calc(var(--tile-size) * 19 + var(--padding) * 2);
+    height: calc(var(--tile-size) * 19 + var(--padding) * 2);
+    background-color: var(--background-color);
+    padding: var(--padding);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(19, var(--tile-size));
+    grid-template-rows: repeat(19, var(--tile-size));
+    background-color: white;
+  }
+
+  .tile {
+    width: var(--tile-size);
+    height: var(--tile-size);
+    background-image: url("{{ url_for('static', filename='images/tile.png') }}"); /*zonder flask: url('./images/tile.png'); */
+    background-size: cover;
+    background-color: transparent;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .stone {
+    position: absolute;
+    top: var(--stone-top);
+    left: var(--stone-left);
+    width: var(--stone-size);
+    height: var(--stone-size);
+    background-size: cover;
+    background-color: transparent;
+  }
+
+  .black-stone {
+    --stone-background-image: url("{{ url_for('static', filename='images/black_stone.png') }}");
+    background-image: var(--stone-background-image);
+  }
+
+  .white-stone {
+    --stone-background-image: url("{{ url_for('static', filename='images/white_stone.png') }}");
+    background-image: var(--stone-background-image);
+  }
+
+  #win-image {
+    display: none;
+    margin-top: 10px;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="board-and-win-image">
+  <div class="background-rect">
+    <div class="grid-container">
+      <!-- Grid cells will be added here by JavaScript -->
+    </div>
+  </div>
+  <img id="win-image" alt="There is a winner!" />
+</div>
+
+<script>
+  class GameState {
+    constructor(boardSize) {
+      this.boardSize = boardSize;
+      this.board = Array.from({ length: boardSize }, () => Array(boardSize).fill(0));
+      this.winningSeries = 5;
+      this.ply = 1;  // Number the move to be made (1-based).
+      this.last_move = null;  // [row, col]
+      this.black = true;  // Whose turn is it? true for black, false for white
+      this.engineBlack = Engine.human
+      this.engineWhite = Engine.marius_tng
+      this.nameBlack = "Da Human"
+      this.nameWhite = "Da AI"
+      this.gameEnded = false
+    }
+
+    // Load game state from localStorage
+    static load() {
+      const savedState = localStorage.getItem('gameState');
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        const gameState = new GameState(parsedState.boardSize);
+        gameState.board = parsedState.board;
+        gameState.ply = parsedState.ply;
+        gameState.last_move = parsedState.last_move;
+        gameState.black = parsedState.black;
+        gameState.engineBlack = parsedState.engineBlack;
+        gameState.engineWhite = parsedState.engineWhite;
+        gameState.nameBlack = parsedState.nameBlack;
+        gameState.nameWhite = parsedState.nameWhite;
+        gameState.gameEnded = parsedState.gameEnded;
+        return gameState;
+      }
+      return new GameState(19); // default board size
+    }
+
+    newGame(engineBlack,engineWhite,nameBlack,nameWhite) {
+      for (let i = 0; i < this.board.length; i++) {
+          for (let j = 0; j < this.board[i].length; j++) {
+              this.board[i][j] = 0;
+          }
+      }
+      this.ply = 1           // move 1 is to be played.
+      this.last_move = null; // no previous move so far.
+      this.black = true;     // black starts.
+      this.engineBlack = engineBlack;
+      this.engineWhite = engineWhite;
+      this.nameBlack = nameBlack;
+      this.nameWhite = nameWhite;
+      this.gameEnded = false;
+    }
+
+    // Save current game state to localStorage
+    save() {
+      localStorage.setItem('gameState', JSON.stringify(this));
+    }
+  }
+
+  class Tile {
+    constructor(row, col, game) {
+      this.row = row;
+      this.col = col;
+      this.game = game;
+      this.element = document.createElement('div');
+      this.element.classList.add('tile');
+      this.element.setAttribute('data-row', row);
+      this.element.setAttribute('data-col', col);
+      this.element.addEventListener('click', () => this.game.onTileClicked(this.row,this.col));
+    }
+
+    appendTo(container) {
+      container.appendChild(this.element);
+    }
+  }
+
+  class Game{
+    constructor(gameState)
+    {
+      // Load the game state
+      this.gameState = gameState;
+      // Add inProgress flag
+      this.aiMoveInProgress = false;
+      // Create the grid and initialize the board with the current game state
+      const container = document.querySelector('.grid-container');
+      this.createGrid(this.gameState.boardSize, container);
+      this.drawStones(gameState.board);
+      this.startPeriodicCheck();
+    }
+
+    startPeriodicCheck() {
+      this.intervalId = setInterval(() => this.moveAiIfNeeded(this.gameState), 100);
+    }
+
+    createGrid(boardSize, container) {
+      for (let row = 0; row < boardSize; row++) {
+        for (let col = 0; col < boardSize; col++) {
+          const tile = new Tile(row, col, this);
+          tile.appendTo(container);
+        }
+      }
+    }
+
+    drawStones(board) {
+      document.querySelectorAll('.tile').forEach(cell => {
+        const row = parseInt(cell.getAttribute('data-row'));
+        const col = parseInt(cell.getAttribute('data-col'));
+        const value = board[row][col];
+        cell.innerHTML = ''; // Clear current content (!)
+
+        if (value === 1) {
+          const whiteStone = document.createElement('div');
+          whiteStone.classList.add('stone', 'white-stone');
+          cell.appendChild(whiteStone);
+        } else if (value === 2) {
+          const blackStone = document.createElement('div');
+          blackStone.classList.add('stone', 'black-stone');
+          cell.appendChild(blackStone);
+        }
+      });
+    }
+
+    isWinningMove(lastMove, board, winningSeries) {
+      // Deze functie controleert of de laatste zet het spel wint
+      const bsize = board.length;
+      const color = board[lastMove[0]][lastMove[1]];
+      
+      //console.log(`color:${color}, bsize:${bsize}, lastMove[0]:${lastMove[0]}, lastMove[1]:${lastMove[1]}, winningSeries:${winningSeries}`)
+
+      // Controleer horizontaal, langs de rij.
+      let numberLR = 1;
+      if (lastMove[1] < bsize - 1) {
+          let lim1 = lastMove[1] + 1;
+          let lim2 = Math.min(lastMove[1] + winningSeries + 1, bsize);
+          //console.log(`lim1:${lim1}, lim2:${lim2}`)
+          for (let i = lim1; i < lim2; i++) {
+              if (board[lastMove[0]][i] === color) {
+                  numberLR += 1;
+              } else {
+                  break;
+              }
+          }
+      }
+      //console.log('k1');
+      if (lastMove[1] > 0) {
+          let lim2 = Math.max(lastMove[1] - winningSeries, 0);
+          for (let i = lastMove[1] - 1; i >= lim2; i--) {
+              if (board[lastMove[0]][i] === color) {
+                  numberLR += 1;
+              } else {
+                  break;
+              }
+          }
+      }
+      //console.log(`numberLR:${numberLR}`)
+      if (numberLR >= winningSeries) {
+          return true;
+      }
+      //console.log('k3');
+      // Controleer verticaal, langs de kolom.
+      let numberUD = 1;
+      if (lastMove[0] < bsize - 1) {
+          let lim1 = lastMove[0] + 1;
+          let lim2 = Math.min(lastMove[0] + winningSeries + 1, bsize);
+          for (let i = lim1; i < lim2; i++) {
+              if (board[i][lastMove[1]] === color) {
+                  numberUD += 1;
+              } else {
+                  break;
+              }
+          }
+      }
+      //console.log(`numberUD:${numberUD}`)
+      //console.log('k4');
+      if (lastMove[0] > 0) {
+          let lim2 = Math.max(lastMove[0] - winningSeries, 0);
+          for (let i = lastMove[0] - 1; i >= lim2; i--) {
+              if (board[i][lastMove[1]] === color) {
+                  numberUD += 1;
+              } else {
+                  break;
+              }
+          }
+      }
+      //console.log(`numberUD:${numberUD}`)
+      if (numberUD >= winningSeries) {
+          return true;
+      }
+      //console.log('k5');
+      // Controleer diagonaal (linksonder naar rechtsboven)
+      let numberDiag = 1;
+      let xlim = lastMove[0] - 1;
+      let ylim = lastMove[1] - 1;
+      while (xlim >= 0 && ylim >= 0) {
+          if (board[xlim][ylim] === color) {
+              numberDiag += 1;
+          } else {
+              break;
+          }
+          xlim -= 1;
+          ylim -= 1;
+      }
+      //console.log(`numberDiag:${numberDiag}`)
+      //console.log('k6');
+      xlim = lastMove[0] + 1;
+      ylim = lastMove[1] + 1;
+      while (xlim < bsize && ylim < bsize) {
+          if (board[xlim][ylim] === color) {
+              numberDiag += 1;
+          } else {
+              break;
+          }
+          xlim += 1;
+          ylim += 1;
+      }
+      //console.log(`numberDiag:${numberDiag}`)
+      if (numberDiag >= winningSeries) {
+          return true;
+      }
+
+      //console.log('k7');
+      // Controleer diagonaal (linksboven naar rechtsonder)
+      numberDiag = 1;
+      xlim = lastMove[0] + 1;
+      ylim = lastMove[1] - 1;
+      while (xlim < bsize && ylim >= 0) {
+          if (board[xlim][ylim] === color) {
+              numberDiag += 1;
+          } else {
+              break;
+          }
+          xlim += 1;
+          ylim -= 1;
+      }
+      //console.log(`numberDiag:${numberDiag}`)
+      //console.log('k8');
+      xlim = lastMove[0] - 1;
+      ylim = lastMove[1] + 1;
+      while (xlim >= 0 && ylim < bsize) {
+          if (board[xlim][ylim] === color) {
+              numberDiag += 1;
+          } else {
+              break;
+          }
+          xlim -= 1;
+          ylim += 1;
+      }
+      //console.log(`numberDiag:${numberDiag}`)
+      if (numberDiag >= winningSeries) {
+          return true;
+      }
+      //console.log('k9');
+
+      return false;
+    }
+
+    handleGameEnd(winner){
+      // Inverted parameters, because after placing the stone, it's the next one's turn.
+      this.displayWinImage(winner);
+      this.postGameResult(winner)
+    }
+
+    onTileClicked(row,col) {
+      console.log(`Tile clicked at (${row}, ${col}), black to play:${this.gameState.black}, ply:${this.gameState.ply}`);
+      if(this.gameState.gameEnded)
+      {
+        console.log("The game already ended!");    
+        return
+      }
+      if((((this.gameState.ply % 2 )==1) && (this.gameState.engineBlack!=Engine.human)) ||
+         (((this.gameState.ply % 2)==0) && (this.gameState.engineWhite!=Engine.human))   )
+      {
+        console.log("It's not your turn!");
+        return
+      }
+      this.tryPlaceStone(row,col)  
+    }
+
+    tryPlaceStone(row,col)
+    {
+      if(this.placeStone(row,col)) 
+      {
+        let winner='none'
+        if (this.isWinningMove([row,col], this.gameState.board, this.gameState.winningSeries) )
+        {
+          if(this.gameState.black) // black is next to play
+          {
+            winner='white'
+          }
+          else 
+          {
+            winner='black'
+          }
+        }
+        else
+        {
+          // check for tie.
+          if(this.gameState.ply == this.gameState.boardSize*this.gameState.boardSize)
+          {
+            winner='tie'
+          }
+        }
+        if (winner!=='none')
+        {
+          this.gameState.gameEnded=true
+          this.handleGameEnd(winner)
+        }
+      }
+    }
+
+    placeStone(row,col) {
+      if (this.gameState.board[row][col] === 0) {
+        this.gameState.board[row][col] = this.gameState.black ? 2 : 1; // 2 for black stone, 1 for white stone
+        this.gameState.last_move = [row, col];
+        this.gameState.ply += 1;
+        this.gameState.black = ((this.gameState.ply % 2)==1); // Switch turns
+        this.gameState.save();
+        this.drawStones(this.gameState.board); // Update the board display
+        return true
+      }
+      else {
+        return false
+      }
+    }
+
+    displayWinImage(winner) {
+      const winImage = document.getElementById('win-image');
+      //const images = ['static/images/youwon1.png', 'static/images/youwon2.png'];
+      //const randomIndex = Math.floor(Math.random() * images.length);
+      //winImage.src = images[randomIndex];
+      if(winner=='black')
+      {
+        winImage.src = "{{ url_for('static', filename='images/blackwon.png') }}";
+      }
+      else if(winner=='white')
+      {
+        winImage.src = "{{ url_for('static', filename='images/whitewon.png') }}";
+      }
+      else // tie
+      {
+        winImage.src = "{{ url_for('static', filename='images/tie.png') }}";
+      }
+
+      winImage.style.display = 'block';
+    }
+
+    postGameResult(winner) {
+      // Verzend het resultaat naar de server
+      const resultData = {
+        winner: winner, // 'black', 'white' or 'tie'
+        engineBlack : this.gameState.engineBlack,
+        engineWhite : this.gameState.engineWhite,
+        nameBlack : this.gameState.nameBlack,
+        nameWhite : this.gameState.nameWhite,
+        plies: this.gameState.ply
+      };
+
+      const apiUrl = "{{ url_for('post_game_result') }}";
+
+      //fetch('http://localhost:5001/gomoku/post-game-result', {
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(resultData)
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log('Result posted successfully.');
+          this.awaitUserClickForRedirect(); // Wacht op gebruikersklik na succesvolle post
+        } else {
+          console.error('Failed to post result.');
+        }
+      })
+      .catch(error => {
+        console.error('Error posting result:', error);
+      });
+    }
+
+    awaitUserClickForRedirect() {
+      document.addEventListener('click', () => {
+        window.location.href = '/gomoku/start'; // Redirect naar de gewenste URL
+      }, { once: true });
+    }
+
+    moveAiIfNeeded(gameState)
+    {
+      if(gameState.gameEnded  || this.aiMoveInProgress)
+      {
+        return 
+      }
+
+      let blacksTurnNow = ((gameState.ply % 2)==1)
+      let url_ai = 'no_ai'
+      if ((blacksTurnNow && gameState.engineBlack===Engine.marius_tng)||
+          (!blacksTurnNow && gameState.engineWhite===Engine.marius_tng))
+      {
+        url_ai = 'https://www.pikido.com/gomoku/make_gomoku_move/ai_marius_tng'
+      }
+      else if ((blacksTurnNow && gameState.engineBlack===Engine.random)||
+          (!blacksTurnNow && gameState.engineWhite===Engine.random))
+      {
+        url_ai = '/gomoku/make_gomoku_move/ai_random'
+      }
+
+      console.log('url_ai:', url_ai); // Debugging statement
+
+      if(url_ai !== 'no_ai')
+      {
+        this.aiMoveInProgress = true;
+        console.log('make AI move');
+        this.moveAi(gameState.board, gameState.ply, gameState.last_move, blacksTurnNow, url_ai)
+        .finally(() => {
+        // Allow the next AI move attempt once this one completes.
+        this.aiMoveInProgress = false;
+        });
+      }
+      // else human, non-ai player is to move (by clicking on a tile)
+    }
+
+    moveAi(board,ply,last_move,blacksTurnNow,url_ai)
+    {
+      const postData = {
+        board : board,
+        ply : ply,
+        last_move : last_move,
+        max_time_to_move : 400,
+        winningSeries : 5,
+        boardSize : 19,
+        black : blacksTurnNow
+      }
+
+      // Stuur deze data naar de Flask-backend
+      // We communiceren nu niet tussen een nginx server en een (andere-) flask server, 
+      // Dus dit is niet meer nodig:
+      // fetch('http://localhost:5001/gomoku/make_gomoku_move/ai_marius_tng', {
+      return fetch(url_ai, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(postData) // Verstuur het object als JSON
+      })
+      .then(response => response.json())
+      .then(data => {
+        // Haal de "move" array uit het JSON-object
+        const move = data.move;
+        console.log('AI Move:', move);
+        this.tryPlaceStone(move[0],move[1]);
+      })
+      .catch((error) => {
+        console.error('Error:', error);
+        alert(`Error: ${error}`);
+      });
+    }
+  }
+
+  const Engine = {
+    human: 'human',
+    random: 'random',
+    marius_tng: 'marius_tng'
+  };
+
+  gameState = GameState.load();
+  {% if engineBlack and engineWhite %}
+    gameState.newGame("{{engineBlack}}","{{engineWhite}}","{{nameBlack}}","{{nameWhite}}");
+    gameState.save()
+  {% endif %}
+
+  const game = new Game(gameState);
+
+</script>
+
+</body>
+</html>
